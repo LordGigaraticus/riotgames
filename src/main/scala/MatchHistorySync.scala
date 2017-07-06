@@ -1,12 +1,7 @@
-import java.io.{File, InputStreamReader}
-import java.lang.Exception
 import java.net.URL
 import java.nio.file.{Files, Path, Paths}
-
-import scala.collection.JavaConverters._
-import com.google.gson._
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
-
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
 import scala.util.Try
 
 /**
@@ -17,15 +12,16 @@ object MatchHistorySync {
     println(getHistory(49076228))
   }
 
-  def getHistory(accountId: Integer):Unit = {
+  def getHistory(accountId: Integer): Unit = {
     val spark = SparkSession.builder().appName("MatchHistory").master("local[*]").getOrCreate()
     import spark.implicits._
-    val url = new URL(s"https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/$accountId?api_key=RGAPI-4849278b-1f04-41af-a137-6040a7313aaf")
-
-    val temp = Paths.get("MatchHistoryBackup.txt")
-    Try( Files.copy(url.openConnection().getInputStream, temp))
-    val str = scala.io.Source.fromInputStream(url.openConnection.getInputStream).getLines().mkString("\n")
+    //API Key expires daily. PM me for new key
+    val url = new URL(s"https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/$accountId?api_key=RGAPI-49d2a0f7-d736-4af6-b28c-bd0b4ab95c4e")
+    val temp: Path = Paths.get("MatchHistoryBackup.txt")
+    Try(Files.copy(url.openConnection().getInputStream, temp))
+    val str = scala.io.Source.fromFile("MatchHistoryBackup.txt").getLines().mkString
     val jsondDataSet = spark.read.json(temp.toString)
-    jsondDataSet.select("matches.champion").show()
+    val df1 = jsondDataSet.select(explode($"matches.champion").as("champion_id")).groupBy($"champion_id").count().orderBy($"champion_id")
+    df1.show(150,false) // Displays the number of times a champ has been played.
   }
 }
