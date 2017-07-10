@@ -5,6 +5,10 @@
     <modelVersion>4.0.0</modelVersion>
     <properties>
         <spark-version>2.0.1</spark-version>
+        <scala-version-major>2</scala-version-major>
+        <scala-verion-minor>11</scala-verion-minor>
+        <scala-version-build>8</scala-version-build>
+        <scala-version-major-minor>${scala-version-major}.${scala-verion-minor}</scala-version-major-minor>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
@@ -44,7 +48,7 @@
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
-            <version>2.11.8</version>
+            <version>${scala-version-major-minor}.${scala-version-build}</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -65,6 +69,11 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-hive_2.11</artifactId>
             <version>${spark-version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.json4s</groupId>
+            <artifactId>json4s-native_${scala-version-major-minor}</artifactId>
+            <version>3.3.0</version>
         </dependency>
     </dependencies>
 </project>
