@@ -7,6 +7,8 @@ After pulling the repo, you will need to open the application_template.conf file
 
 Additionally you will also need to add the absolute path to the RiotGames.db file included in this repository. Example path:  "jdbc:sqlite:/Users/dakotahrickert/dev/DataEngineering/riotgames/RiotGames.db"
 
+After doing all this, you will need to remove the template portion of the file name and rename it "application.conf"
+
 # Usage
 Functions are called in the Main function. There are two example calls provided.
 
