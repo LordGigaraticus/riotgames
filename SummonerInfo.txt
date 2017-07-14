@@ -1,0 +1,1 @@
+{"id":34779354,"accountId":49076228,"name":"Lord Gigaraticus","profileIconId":2074,"revisionDate":1500019451000,"summonerLevel":30}

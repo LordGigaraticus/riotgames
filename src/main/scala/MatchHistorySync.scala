@@ -60,8 +60,9 @@ object MatchHistorySync {
   //Main function for testing features
   //--------------------------------------------------------------------
   def main(args: Array[String]): Unit = {
-    updateMatchHistoryDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
-    getHistory(getSummonerInfo("LordGigaraticus")) //Change name to add your data
+//    updateMatchHistoryDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
+    updateChampionDB()
+//    getHistory(getSummonerInfo("LordGigaraticus")) //Change name to add your data
   }
 
   //--------------------------------------------------------------------
@@ -93,22 +94,33 @@ object MatchHistorySync {
 
   // This function updates the Champion table with the current champion stats
   def updateChampionDB(): Unit = {
-    val url = new URL(s"https://na1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&tags=stats&dataById=true&api_key=$APIKEY")
-    val filePath: Path = Paths.get("ChampionStats.txt") //Create backup file
-    Try(Files.copy(url.openConnection().getInputStream, filePath, StandardCopyOption.REPLACE_EXISTING)) //Attempt to call API, if down load from backup
-    val str = scala.io.Source.fromFile("ChampionStats.txt").getLines().mkString //Load in API call
-    val jsonMap: JValue = parse(str)
-    val jsonExtract = jsonMap.extract[ChampionStatsObject]
-    jsonExtract.data.foreach((x: (Integer, ChampionStatFields)) =>
+    val url1 = new URL(s"https://euw1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&tags=stats&dataById=true&api_key=$APIKEY") //Change to na1 from euw1 once na1 is back up.
+    val url2 = new URL(s"https://euw1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&tags=info&dataById=true&api_key=$APIKEY") //Change to na1 from euw1 once na1 is back up.
+    val filePath1: Path = Paths.get("ChampionStats.txt") //Create backup file
+    val filePath2: Path = Paths.get("ChampionInfo.txt") //Create backup file
+    Try(Files.copy(url1.openConnection().getInputStream, filePath1, StandardCopyOption.REPLACE_EXISTING)) //Attempt to call API, if down load from backup
+    Try(Files.copy(url2.openConnection().getInputStream, filePath2, StandardCopyOption.REPLACE_EXISTING)) //Attempt to call API, if down load from backup
+    val str1 = scala.io.Source.fromFile("ChampionStats.txt").getLines().mkString //Load in API call
+    val str2 = scala.io.Source.fromFile("ChampionInfo.txt").getLines().mkString //Load in API call
+    val jsonMap1: JValue = parse(str1)
+    val jsonMap2: JValue = parse(str2)
+    val jsonExtract1 = jsonMap1.extract[ChampionStatsObject]
+    val jsonExtract2 = jsonMap2.extract[ChampionInfoObject]
+    jsonExtract1.data.foreach((x: (Integer, ChampionStatFields)) =>
       sql"""
-    INSERT OR REPLACE INTO champion (id,version,`name`,`key`,title,armor_per_level,attack_damage,mp_per_level,attack_speed_offset,mp,armor,
-    hp,hp_regen_per_level,attack_speed_per_level,attack_range,move_speed,attack_damage_per_level,mp_regen_per_level,crit_per_level,spell_block_per_level,
-    crit,mp_regen,spell_block,hp_regen,hp_per_level)
-      VALUES (${x._1},${jsonExtract.version},${x._2.name},${x._2.key},${x._2.title},${x._2.stats.armorperlevel},${x._2.stats.attackdamage},${x._2.stats.mpperlevel},
+    INSERT OR REPLACE INTO champion (id,version,`name`,`key`,title,armorperlevel,attackdamage,mpperlevel,attackspeedoffset,mp,armor,
+    hp,hpregenperlevel,attackspeedperlevel,attackrange,movespeed,attackdamageperlevel,mpregenperlevel,critperlevel,spellblockperlevel,
+    crit,mpregen,spellblock,hpregen,hpperlevel)
+      VALUES (${x._1},${jsonExtract1.version},${x._2.name},${x._2.key},${x._2.title},${x._2.stats.armorperlevel},${x._2.stats.attackdamage},${x._2.stats.mpperlevel},
         ${x._2.stats.attackspeedoffset},${x._2.stats.mp},${x._2.stats.armor},${x._2.stats.hp},${x._2.stats.hpregenperlevel},${x._2.stats.attackspeedperlevel},
         ${x._2.stats.attackrange},${x._2.stats.movespeed},${x._2.stats.attackdamageperlevel},${x._2.stats.mpregenperlevel},${x._2.stats.critperlevel},
         ${x._2.stats.spellblockperlevel},${x._2.stats.crit},${x._2.stats.mpregen},${x._2.stats.spellblock},${x._2.stats.hpregen},${x._2.stats.hpperlevel})
       """.execute().apply())
+    jsonExtract2.data.foreach((y: (Integer, ChampionInfoMap)) =>
+    sql"""
+      UPDATE champion SET difficulty = ${y._2.info.difficulty}, attack = ${y._2.info.attack}, defense = ${y._2.info.defense}, magic = ${y._2.info.magic} WHERE id = ${y._1}
+      """.execute().apply()
+    )
   }
 
   // This function aggregates information about match history for a given summoner ID
@@ -212,12 +224,18 @@ object MatchHistorySync {
   case class ChampionStatFields(title: String, stats: ChampionStats, id: Integer, key: String, name: String)
 
   case class ChampionStats(
-                            armorperlevel: Integer = 0, attackdamage: Integer = 0, mpperlevel: Integer = 0, attackspeedoffset: Integer = 0, mp: Integer = 0,
-                            armor: Integer = 0, hp: Integer = 0, hpregenperlevel: Integer = 0, attackspeedperlevel: Integer = 0, attackrange: Integer = 0,
-                            movespeed: Integer = 0, attackdamageperlevel: Integer = 0, mpregenperlevel: Integer = 0, critperlevel: Integer = 0,
-                            spellblockperlevel: Integer = 0, crit: Integer = 0, mpregen: Integer = 0, spellblock: Integer = 0,
-                            hpregen: Integer = 0, hpperlevel: Integer = 0
+                            armorperlevel: Double = 0, attackdamage: Double = 0, mpperlevel: Double = 0, attackspeedoffset: Double = 0, mp: Double = 0,
+                            armor: Double = 0, hp: Double = 0, hpregenperlevel: Double = 0, attackspeedperlevel: Double = 0, attackrange: Double = 0,
+                            movespeed: Double = 0, attackdamageperlevel: Double = 0, mpregenperlevel: Double = 0, critperlevel: Double = 0,
+                            spellblockperlevel: Double = 0, crit: Double = 0, mpregen: Double = 0, spellblock: Double = 0,
+                            hpregen: Double = 0, hpperlevel: Double = 0
                           )
+
+  case class ChampionInfoObject(`type`: String, version: String, data: Map[Integer, ChampionInfoMap])
+
+  case class ChampionInfoMap(info: ChampionInfoFields = new ChampionInfoFields, title: String = "", id: Integer = 0, key: String = "", name: String = "")
+
+  case class ChampionInfoFields(difficulty: Integer = 0, attack: Integer = 0, defense: Integer = 0, magic: Integer = 0)
 
   case class MatchHistory(matches: List[MatchFields], startIndex: Integer, endIndex: Integer, totalGames: Integer)
 
