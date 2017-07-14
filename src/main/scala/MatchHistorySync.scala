@@ -60,14 +60,14 @@ object MatchHistorySync {
   //Main function for testing features
   //--------------------------------------------------------------------
   def main(args: Array[String]): Unit = {
-    updateDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
+    updateMatchHistoryDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
     getHistory(getSummonerInfo("LordGigaraticus")) //Change name to add your data
   }
 
   //--------------------------------------------------------------------
 
 
-  def updateDB(accountId: Integer): Unit = {
+  def updateMatchHistoryDB(accountId: Integer): Unit = {
     //    val url = new URL(s"https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/$accountId?api_key=$APIKEY") //API Call
     val url = new URL(s"https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/$accountId/recent?api_key=$APIKEY")
     val filePath: Path = Paths.get("MatchHistoryBackup.txt") //Create backup file
@@ -84,8 +84,31 @@ object MatchHistorySync {
       Try(a.participants.filter(t => t.participantId == a.participantIdentities.filter(y => y.player.accountId == accountId).map(z => z.participantId).head).map(x => x.stats).head.assists).toOption.getOrElse(0)
     ))
 
-    jsonExtract.matches.foreach(x => sql"INSERT OR REPLACE INTO match_history (accountid,gameid,lane,champion,platformid,queue,role,season,`timestamp`,win,gold_earned,kills,deaths,assists,kda) VALUES (${accountId},${x.gameId}, ${x.lane},${x.champion},${x.platformId},${x.queue},${x.role},${x.season},${x.timestamp},NULL,NULL,NULL,NULL,NULL,NULL) ".execute().apply())
+    jsonExtract.matches.foreach(x =>
+      sql"""INSERT OR REPLACE INTO match_history (accountid,gameid,lane,champion,platformid,queue,role,season,`timestamp`,win,gold_earned,kills,deaths,assists,kda)
+           VALUES (${accountId},${x.gameId}, ${x.lane},${x.champion},${x.platformId},${x.queue},${x.role},${x.season},${x.timestamp},NULL,NULL,NULL,NULL,NULL,NULL)
+        """.execute().apply())
     matchDataExtract.foreach(x => sql"UPDATE match_history SET win = ${x.win}, gold_earned = ${x.goldEarned}, kills = ${x.kills}, deaths = ${x.deaths}, assists = ${x.assists} WHERE gameid = ${x.gameId} ".execute().apply())
+  }
+
+  // This function updates the Champion table with the current champion stats
+  def updateChampionDB(): Unit = {
+    val url = new URL(s"https://na1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&tags=stats&dataById=true&api_key=$APIKEY")
+    val filePath: Path = Paths.get("ChampionStats.txt") //Create backup file
+    Try(Files.copy(url.openConnection().getInputStream, filePath, StandardCopyOption.REPLACE_EXISTING)) //Attempt to call API, if down load from backup
+    val str = scala.io.Source.fromFile("ChampionStats.txt").getLines().mkString //Load in API call
+    val jsonMap: JValue = parse(str)
+    val jsonExtract = jsonMap.extract[ChampionStatsObject]
+    jsonExtract.data.foreach((x: (Integer, ChampionStatFields)) =>
+      sql"""
+    INSERT OR REPLACE INTO champion (id,version,`name`,`key`,title,armor_per_level,attack_damage,mp_per_level,attack_speed_offset,mp,armor,
+    hp,hp_regen_per_level,attack_speed_per_level,attack_range,move_speed,attack_damage_per_level,mp_regen_per_level,crit_per_level,spell_block_per_level,
+    crit,mp_regen,spell_block,hp_regen,hp_per_level)
+      VALUES (${x._1},${jsonExtract.version},${x._2.name},${x._2.key},${x._2.title},${x._2.stats.armorperlevel},${x._2.stats.attackdamage},${x._2.stats.mpperlevel},
+        ${x._2.stats.attackspeedoffset},${x._2.stats.mp},${x._2.stats.armor},${x._2.stats.hp},${x._2.stats.hpregenperlevel},${x._2.stats.attackspeedperlevel},
+        ${x._2.stats.attackrange},${x._2.stats.movespeed},${x._2.stats.attackdamageperlevel},${x._2.stats.mpregenperlevel},${x._2.stats.critperlevel},
+        ${x._2.stats.spellblockperlevel},${x._2.stats.crit},${x._2.stats.mpregen},${x._2.stats.spellblock},${x._2.stats.hpregen},${x._2.stats.hpperlevel})
+      """.execute().apply())
   }
 
   // This function aggregates information about match history for a given summoner ID
@@ -182,7 +205,19 @@ object MatchHistorySync {
 
   case class ChampionObject(`type`: String, version: String, data: Map[Integer, ChampionFields])
 
-  case class ChampionFields(title: String, id: Int, key: String, name: String)
+  case class ChampionFields(title: String, id: Integer, key: String, name: String)
+
+  case class ChampionStatsObject(`type`: String, version: String, data: Map[Integer, ChampionStatFields])
+
+  case class ChampionStatFields(title: String, stats: ChampionStats, id: Integer, key: String, name: String)
+
+  case class ChampionStats(
+                            armorperlevel: Integer = 0, attackdamage: Integer = 0, mpperlevel: Integer = 0, attackspeedoffset: Integer = 0, mp: Integer = 0,
+                            armor: Integer = 0, hp: Integer = 0, hpregenperlevel: Integer = 0, attackspeedperlevel: Integer = 0, attackrange: Integer = 0,
+                            movespeed: Integer = 0, attackdamageperlevel: Integer = 0, mpregenperlevel: Integer = 0, critperlevel: Integer = 0,
+                            spellblockperlevel: Integer = 0, crit: Integer = 0, mpregen: Integer = 0, spellblock: Integer = 0,
+                            hpregen: Integer = 0, hpperlevel: Integer = 0
+                          )
 
   case class MatchHistory(matches: List[MatchFields], startIndex: Integer, endIndex: Integer, totalGames: Integer)
 
