@@ -3,7 +3,7 @@ Playing with the League Of Legends API
 This project was created to practice using Scala and Spark to create databases and aggregate data from an API.
 
 # Installation
-After pulling the repo, you will need to open the application_template.conf file and add in your Riot Developers API key. This key can be obtained by going to https://developer.riotgames.com/ and signing in with your League of Legends account. IMPORTANT: This key only lasts about a day, so you will need to regenerate the key and update the file roughly every 24 hours. 
+After pulling the repo, you will need to open the riotgames.properties file at the root of the project and add in your Riot Developers API key. This key can be obtained by going to https://developer.riotgames.com/ and signing in with your League of Legends account. IMPORTANT: This key only lasts about a day, so you will need to regenerate the key and update the file roughly every 24 hours. 
 
 Additionally you will also need to add the absolute path to the RiotGames.db file included in this repository. Example path:  "jdbc:sqlite:/Users/dakotahrickert/dev/DataEngineering/riotgames/RiotGames.db"
 

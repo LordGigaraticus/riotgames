@@ -28,6 +28,21 @@
     <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc-interpolation_2.11:2.5.2" level="project" />
     <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc-interpolation-macro_2.11:2.5.2" level="project" />
     <orderEntry type="library" name="Maven: com.typesafe:config:1.3.1" level="project" />
+    <orderEntry type="library" name="Maven: org.json4s:json4s-native_2.11:3.3.0" level="project" />
+    <orderEntry type="library" name="Maven: org.json4s:json4s-core_2.11:3.3.0" level="project" />
+    <orderEntry type="library" name="Maven: org.json4s:json4s-ast_2.11:3.3.0" level="project" />
+    <orderEntry type="library" name="Maven: org.json4s:json4s-scalap_2.11:3.3.0" level="project" />
+    <orderEntry type="library" name="Maven: org.scala-lang.modules:scala-xml_2.11:1.0.5" level="project" />
+    <orderEntry type="library" name="Maven: org.xerial:sqlite-jdbc:3.8.7" level="project" />
+    <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc_2.11:2.5.2" level="project" />
+    <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc-core_2.11:2.5.2" level="project" />
+    <orderEntry type="library" name="Maven: org.apache.commons:commons-dbcp2:2.1.1" level="project" />
+    <orderEntry type="library" name="Maven: org.apache.commons:commons-pool2:2.4.2" level="project" />
+    <orderEntry type="library" name="Maven: org.joda:joda-convert:1.8.1" level="project" />
+    <orderEntry type="library" name="Maven: org.scala-lang.modules:scala-parser-combinators_2.11:1.0.4" level="project" />
+    <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc-interpolation_2.11:2.5.2" level="project" />
+    <orderEntry type="library" name="Maven: org.scalikejdbc:scalikejdbc-interpolation-macro_2.11:2.5.2" level="project" />
+    <orderEntry type="library" name="Maven: com.typesafe:config:1.3.1" level="project" />
     <orderEntry type="library" name="Maven: org.scala-lang:scala-library:2.11.8" level="project" />
     <orderEntry type="library" name="Maven: com.google.code.gson:gson:2.8.0" level="project" />
     <orderEntry type="library" name="Maven: org.apache.spark:spark-core_2.11:2.0.1" level="project" />
