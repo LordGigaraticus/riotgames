@@ -67,10 +67,10 @@ object MatchHistorySync {
   //Main function for testing features
   //--------------------------------------------------------------------
   def main(args: Array[String]): Unit = {
-//    updateMatchHistoryDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
+    //    updateMatchHistoryDB(getSummonerInfo("LordGigaraticus")) //Change name to add your data
     updateChampionDB()
     updateFullMatchHistoryDB(2550625724L)
-//    getHistory(getSummonerInfo("LordGigaraticus")) //Change name to add your data
+    //    getHistory(getSummonerInfo("LordGigaraticus")) //Change name to add your data
   }
 
   //--------------------------------------------------------------------
@@ -96,7 +96,7 @@ object MatchHistorySync {
     jsonExtract.matches.foreach(x =>
       sql"""INSERT INTO match_history(accountid,gameid,lane,champion,platformid,queue,role,season,timestamp,win,gold_earned,kills,deaths,assists,kda)
            VALUES (${accountId},${x.gameId}, ${x.lane},${x.champion},${x.platformId},${x.queue},${x.role},${x.season},${x.timestamp},NULL,NULL,NULL,NULL,NULL,NULL)
-           ON CONFLICT (gameid) UPDATE SET accountid = ${accountId}, lane = ${x.lane},champion = ${x.champion},
+           ON CONFLICT (gameid) DO UPDATE SET accountid = ${accountId}, lane = ${x.lane},champion = ${x.champion},
            platformid = ${x.platformId},queue = ${x.queue},role = ${x.role},season = ${x.season},timestamp = ${x.timestamp},
            win = NULL, gold_earned = NULL, kills = NULL, deaths = NULL, assists = NULL, kda = NULL
         """.execute().apply())
@@ -110,9 +110,249 @@ object MatchHistorySync {
     Try(Files.copy(url.openConnection().getInputStream, filePath, StandardCopyOption.REPLACE_EXISTING))
     val str = scala.io.Source.fromFile("FullMatchHistoryBackup.txt").getLines().mkString
     val jsonMap: JValue = parse(str)
-    val jsonExtract: MatchDto = jsonMap.extract[MatchDto]
+    val data: MatchDto = jsonMap.extract[MatchDto]
     //TODO: Add code to update Postgres DB
+    //    sql"""
+    //       INSERT INTO riotgames.full_match_history(seasonid, queueid, gameid,participantidentities, gameversion, platformid, gamemode, mapid, gametype, teams, participants, gameduration, gamecreation)
+    //        VALUES (${data.seasonId},${data.queueId},${data.gameId},${data.participantIdentities.toArray},${data.gameVersion},${data.platformId},
+    //      ${data.gameMode},${data.mapId},${data.gameType},${data.teams},${data.participants},${data.gameDuration},${data.gameCreation})
+    //      ON CONFLICT (gameId) DO UPDATE SET seasonid = ${data.seasonId},queueid = ${data.queueId},participantidentities = ${data.participantIdentities},gameversion = ${data.gameVersion},platformid = ${data.platformId},
+    //         gamemode = ${data.gameMode},mapid = ${data.mapId},gametype = ${data.gameType},teams = ${data.teams},participants = ${data.participants},gameduration = ${data.gameDuration},gamecreation = ${data.gameCreation}
+    //      """.execute().apply()
+
+    //MatchDTO
+    sql"""
+         INSERT INTO riotgames.matchdto(seasonid, queueid, gameid, gameversion, platformid, gamemode, mapid, gametype, gameduration, gamecreation)
+         VALUES (${data.seasonId}, ${data.queueId},${data.gameId},${data.gameVersion},${data.platformId},${data.gameMode},${data.mapId},${data.gameType},${data.gameDuration},${data.gameCreation})
+         ON CONFLICT (gameid) DO UPDATE SET seasonid = ${data.seasonId},queueid = ${data.queueId},gameversion = ${data.gameVersion},platformid = ${data.platformId},
+         gamemode = ${data.gameMode},mapid = ${data.mapId},gametype = ${data.gameType},gameduration = ${data.gameDuration},gamecreation = ${data.gameCreation}
+          """.execute().apply()
+    //PlayerDTO
+    data.participantIdentities.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.playerdto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.playerdto SET currentplatformid = ${x.player.currentPlatformId},summonername = ${x.player.summonerName},matchhistoryuri = ${x.player.matchHistoryUri},
+         platformid = ${x.player.platformId},currentaccountid = ${x.player.currentAccountId},
+         profileicon = ${x.player.profileIcon},summonerid = ${x.player.summonerId},accountid = ${x.player.accountId},participantid = ${x.participantId} WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.playerdto(gameid, currentplatformid, summonername, matchhistoryuri, platformid, currentaccountid, profileicon, summonerid, accountid, participantid)
+         SELECT ${data.gameId},${x.player.currentPlatformId},${x.player.summonerName},${x.player.matchHistoryUri},${x.player.platformId},
+         ${x.player.currentAccountId},${x.player.profileIcon},${x.player.summonerId},${x.player.accountId},${x.participantId}
+         WHERE NOT EXISTS (SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //TeamStatsDTO
+    data.teams.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.teamstatsdto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.teamstatsdto SET firstdragon = ${x.firstDragon},firstinhibitor = ${x.firstInhibitor},baronkills = ${x.baronKills},
+         firstriftherald = ${x.firstRiftHerald},firstbaron = ${x.firstBaron},riftheraldkills = ${x.riftHeraldKills},
+         firstblood = ${x.firstBlood},teamid = ${x.teamId},firsttower = ${x.firstTower},vilemawkills = ${x.vilemawKills},inhibitorkills = ${x.inhibitorKills},
+         towerkills = ${x.towerKills},dominionvictoryscore = ${x.dominionVictoryScore},win = ${x.win},dragonkills = ${x.dragonKills} WHERE gameid = ${data.gameId} AND teamid = ${x.teamId} RETURNING *)
+         INSERT INTO riotgames.teamstatsdto(gameid, firstdragon, firstinhibitor, baronkills, firstriftherald, firstbaron, riftheraldkills, firstblood, teamid, firsttower, vilemawkills, inhibitorkills, towerkills, dominionvictoryscore, win, dragonkills)
+         SELECT ${data.gameId}, ${x.firstDragon},${x.firstInhibitor},${x.baronKills},${x.firstRiftHerald},${x.firstBaron},${x.riftHeraldKills},${x.firstBlood},${x.teamId},${x.firstTower},${x.vilemawKills},${x.inhibitorKills},${x.towerKills},
+         ${x.dominionVictoryScore},${x.win},${x.dragonKills}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //ParticipantDTO
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.participantdto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.participantdto SET gameid = ${data.gameId}, participantid = ${x.participantId},teamid = ${x.teamId},spell2id = ${x.spell2Id},
+         highestachievedseasontier = ${x.highestAchievedSeasonTier},spell1id = ${x.spell1Id},championid = ${x.championId}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT  INTO  riotgames.participantdto(gameid, participantid, teamid, spell2id, highestachievedseasontier, spell1id, championid)
+         SELECT ${data.gameId}, ${x.participantId},${x.teamId},${x.spell2Id},${x.highestAchievedSeasonTier},${x.spell1Id},${x.championId}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //ParticipantStatsDTO
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.participantstatsdto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.participantstatsdto SET gameid = ${data.gameId}, physicaldamagedealt = ${x.stats.physicalDamageDealt}, neutralminionskilledteamjungle = ${x.stats.neutralMinionsKilledTeamJungle}, magicdamagedealt = ${x.stats.magicDamageDealt},
+         totalplayerscore = ${x.stats.totalPlayerScore}, deaths = ${x.stats.deaths}, win = ${x.stats.win}, neutralminionskilledenemyjungle = ${x.stats.neutralMinionsKilledEnemyJungle}, altarscaptured = ${x.stats.altarsCaptured}, largestcriticalstrike = ${x.stats.largestCriticalStrike},
+         totaldamagedealt = ${x.stats.totalDamageDealt}, magicdamagedealttochampions = ${x.stats.magicDamageDealtToChampions}, visionwardsboughtingame = ${x.stats.visionWardsBoughtInGame}, damagedealttoobjectives = ${x.stats.damageDealtToObjectives}, largestkillingspree = ${x.stats.largestKillingSpree},
+         item1 = ${x.stats.item1}, quadrakills = ${x.stats.quadraKills}, teamobjective = ${x.stats.teamObjective}, totaltimecrowdcontroldealt = ${x.stats.totalTimeCrowdControlDealt}, longesttimespentliving = ${x.stats.longestTimeSpentLiving},
+         wardskilled = ${x.stats.wardsKilled}, firsttowerassist = ${x.stats.firstTowerAssist}, firsttowerkill = ${x.stats.firstTowerKill}, item2 = ${x.stats.item2}, item3 = ${x.stats.item3},item0 = ${x.stats.item0}, firstbloodassist = ${x.stats.firstBloodAssist},
+         visionscore = ${x.stats.visionScore}, wardsplaced = ${x.stats.wardsPlaced}, item4 = ${x.stats.item4}, item5 = ${x.stats.item5}, item6 = ${x.stats.item6}, turretkills = ${x.stats.turretKills}, triplekills = ${x.stats.tripleKills},
+         damageselfmitigated = ${x.stats.damageSelfMitigated},champlevel = ${x.stats.champLevel}, nodeneutralizeassist = ${x.stats.nodeNeutralizeAssist}, firstinhibitorkill = ${x.stats.firstInhibitorKill}, goldearned = ${x.stats.goldEarned},
+         magicaldamagetaken = ${x.stats.magicalDamageTaken}, kills = ${x.stats.kills}, doublekills = ${x.stats.doubleKills}, nodecaptureassist = ${x.stats.nodeCaptureAssist}, truedamagetaken = ${x.stats.trueDamageTaken}, nodeneutralize = ${x.stats.nodeNeutralize},
+         firstinhibitorassist = ${x.stats.firstInhibitorAssist}, assists = ${x.stats.assists},unrealkills = ${x.stats.unrealKills}, neutralminionskilled = ${x.stats.neutralMinionsKilled}, objectiveplayerscore = ${x.stats.objectivePlayerScore},
+         combatplayerscore = ${x.stats.combatPlayerScore}, damagedealttoturrets = ${x.stats.damageDealtToTurrets}, altarsneutralized = ${x.stats.altarsNeutralized}, physicaldamagedealttochampions = ${x.stats.physicalDamageDealtToChampions}, goldspent = ${x.stats.goldSpent},
+         truedamagedealt = ${x.stats.trueDamageDealt}, truedamagedealttochampions = ${x.stats.trueDamageDealtToChampions}, participantid = ${x.stats.participantId}, pentakills = ${x.stats.pentaKills}, totalheal = ${x.stats.totalHeal}, totalminionskilled = ${x.stats.totalMinionsKilled},
+         firstbloodkill = ${x.stats.firstBloodKill}, nodecapture = ${x.stats.nodeCapture}, largestmultikill = ${x.stats.largestMultiKill}, sightwardsboughtingame = ${x.stats.sightWardsBoughtInGame}, totaldamagedealttochampions = ${x.stats.totalDamageDealtToChampions},
+         totalunitshealed = ${x.stats.totalUnitsHealed}, inhibitorkills = ${x.stats.inhibitorKills}, totalscorerank = ${x.stats.totalScoreRank}, totaldamagetaken = ${x.stats.totalDamageTaken}, killingsprees = ${x.stats.killingSprees}, timeccingothers = ${x.stats.timeCCingOthers},
+         physicaldamagetaken = ${x.stats.physicalDamageTaken}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.participantstatsdto(gameid, physicaldamagedealt, neutralminionskilledteamjungle, magicdamagedealt, totalplayerscore, deaths, win, neutralminionskilledenemyjungle, altarscaptured,
+         largestcriticalstrike, totaldamagedealt, magicdamagedealttochampions, visionwardsboughtingame, damagedealttoobjectives, largestkillingspree, item1, quadrakills, teamobjective, totaltimecrowdcontroldealt,
+         longesttimespentliving, wardskilled, firsttowerassist, firsttowerkill, item2, item3, item0, firstbloodassist, visionscore, wardsplaced, item4, item5, item6, turretkills, triplekills, damageselfmitigated,
+         champlevel, nodeneutralizeassist, firstinhibitorkill, goldearned, magicaldamagetaken, kills, doublekills, nodecaptureassist, truedamagetaken, nodeneutralize, firstinhibitorassist, assists, unrealkills,
+         neutralminionskilled, objectiveplayerscore, combatplayerscore, damagedealttoturrets, altarsneutralized, physicaldamagedealttochampions, goldspent, truedamagedealt, truedamagedealttochampions, participantid,
+         pentakills, totalheal, totalminionskilled, firstbloodkill, nodecapture, largestmultikill, sightwardsboughtingame, totaldamagedealttochampions, totalunitshealed, inhibitorkills, totalscorerank, totaldamagetaken,
+         killingsprees, timeccingothers, physicaldamagetaken)
+         SELECT ${data.gameId}, ${x.stats.physicalDamageDealt}, ${x.stats.neutralMinionsKilledTeamJungle}, ${x.stats.magicDamageDealt}, ${x.stats.totalPlayerScore}, ${x.stats.deaths}, ${x.stats.win}, ${x.stats.neutralMinionsKilledEnemyJungle}, ${x.stats.altarsCaptured},
+         ${x.stats.largestCriticalStrike}, ${x.stats.totalDamageDealt}, ${x.stats.magicDamageDealtToChampions}, ${x.stats.visionWardsBoughtInGame}, ${x.stats.damageDealtToObjectives}, ${x.stats.largestKillingSpree}, ${x.stats.item1}, ${x.stats.quadraKills},
+         ${x.stats.teamObjective}, ${x.stats.totalTimeCrowdControlDealt}, ${x.stats.longestTimeSpentLiving}, ${x.stats.wardsKilled}, ${x.stats.firstTowerAssist}, ${x.stats.firstTowerKill}, ${x.stats.item2}, ${x.stats.item3}, ${x.stats.item0}, ${x.stats.firstBloodAssist},
+         ${x.stats.visionScore}, ${x.stats.wardsPlaced}, ${x.stats.item4}, ${x.stats.item5}, ${x.stats.item6}, ${x.stats.turretKills}, ${x.stats.tripleKills}, ${x.stats.damageSelfMitigated},${x.stats.champLevel}, ${x.stats.nodeNeutralizeAssist}, ${x.stats.firstInhibitorKill},
+         ${x.stats.goldEarned}, ${x.stats.magicalDamageTaken}, ${x.stats.kills}, ${x.stats.doubleKills}, ${x.stats.nodeCaptureAssist}, ${x.stats.trueDamageTaken}, ${x.stats.nodeNeutralize}, ${x.stats.firstInhibitorAssist}, ${x.stats.assists}, ${x.stats.unrealKills},
+         ${x.stats.neutralMinionsKilled}, ${x.stats.objectivePlayerScore}, ${x.stats.combatPlayerScore}, ${x.stats.damageDealtToTurrets}, ${x.stats.altarsNeutralized}, ${x.stats.physicalDamageDealtToChampions}, ${x.stats.goldSpent}, ${x.stats.trueDamageDealt},
+         ${x.stats.trueDamageDealtToChampions}, ${x.stats.participantId},${x.stats.pentaKills}, ${x.stats.totalHeal}, ${x.stats.totalMinionsKilled}, ${x.stats.firstBloodKill}, ${x.stats.nodeCapture}, ${x.stats.largestMultiKill}, ${x.stats.sightWardsBoughtInGame},
+         ${x.stats.totalDamageDealtToChampions}, ${x.stats.totalUnitsHealed}, ${x.stats.inhibitorKills}, ${x.stats.totalScoreRank}, ${x.stats.totalDamageTaken}, ${x.stats.killingSprees}, ${x.stats.timeCCingOthers}, ${x.stats.physicalDamageTaken}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //RuneDTO
+    data.participants.foreach(x => x.runes.foreach(y =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.runedto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.runedto SET gameid = ${data.gameId}, participantid = ${x.participantId}, runeid = ${y.runeId}, rank = ${y.rank}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} AND runeid =${y.runeId} RETURNING *)
+         INSERT INTO riotgames.runedto(gameid, participantid, runeid, rank)
+         SELECT ${data.gameId}, ${x.participantId}, ${y.runeId}, ${y.rank}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply()))
+    //MasteriesDTO
+    data.participants.foreach(x => x.masteries.foreach(y =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.masterydto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.masterydto
+         SET gameid = ${data.gameId}, participantid = ${x.participantId}, masteryid = ${y.masteryId}, rank = ${y.rank}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} AND masteryid = ${y.masteryId} RETURNING *)
+         INSERT INTO riotgames.masterydto(gameid, participantid, masteryid, rank)
+         SELECT ${data.gameId}, ${x.participantId}, ${y.masteryId}, ${y.rank}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply()))
+    //BansDTO
+    data.teams.foreach(x => x.bans.foreach(y =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.teambansdto IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.teambansdto
+         SET gameid = ${data.gameId}, teamid = ${x.teamId}, pickturn = ${y.pickTurn}, championid = ${y.championId}
+         WHERE gameid = ${data.gameId} AND teamid = ${x.teamId} AND pickturn = ${y.pickTurn} RETURNING *)
+         INSERT INTO riotgames.teambansdto(gameid, teamid, pickturn, championid)
+         SELECT ${data.gameId}, ${x.teamId}, ${y.pickTurn}, ${y.championId}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply()))
+    //ParticipantTimelineDTO
+    //CSDiffPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.csdiffpermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.csdiffpermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.csDiffPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.csDiffPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.csDiffPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.csDiffPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.csdiffpermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.csDiffPerMinDeltas("30-end")}, ${x.timeline.csDiffPerMinDeltas("20-30")},
+         ${x.timeline.csDiffPerMinDeltas("10-20")}, ${x.timeline.csDiffPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //GoldPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.goldpermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.goldpermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.goldPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.goldPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.goldPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.goldPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.goldpermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.goldPerMinDeltas("30-end")}, ${x.timeline.goldPerMinDeltas("20-30")},
+         ${x.timeline.goldPerMinDeltas("10-20")}, ${x.timeline.goldPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //XPDiffPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.xpdiffpermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.xpdiffpermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.xpDiffPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.xpDiffPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.xpDiffPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.xpDiffPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.xpdiffpermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.xpDiffPerMinDeltas("30-end")}, ${x.timeline.xpDiffPerMinDeltas("20-30")},
+         ${x.timeline.xpDiffPerMinDeltas("10-20")}, ${x.timeline.xpDiffPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //CreepsPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.creepspermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.creepspermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.creepsPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.creepsPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.creepsPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.creepsPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.creepspermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.creepsPerMinDeltas("30-end")}, ${x.timeline.creepsPerMinDeltas("20-30")},
+         ${x.timeline.creepsPerMinDeltas("10-20")}, ${x.timeline.creepsPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //XPPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.xppermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.xppermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.xpPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.xpPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.xpPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.xpPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.xppermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.xpPerMinDeltas("30-end")}, ${x.timeline.xpPerMinDeltas("20-30")},
+         ${x.timeline.xpPerMinDeltas("10-20")}, ${x.timeline.xpPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //DamageTakenDiffPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.damagetakendiffpermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.damagetakendiffpermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.damageTakenDiffPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.damageTakenDiffPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.damageTakenDiffPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.damageTakenDiffPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.damagetakendiffpermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.damageTakenDiffPerMinDeltas("30-end")}, ${x.timeline.damageTakenDiffPerMinDeltas("20-30")},
+         ${x.timeline.damageTakenDiffPerMinDeltas("10-20")}, ${x.timeline.damageTakenDiffPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
+    //DamageTakenPerMinDeltas
+    data.participants.foreach(x =>
+      sql"""
+         BEGIN;
+         LOCK TABLE riotgames.damagetakenpermindeltas IN SHARE ROW EXCLUSIVE MODE;
+         WITH upsert AS (UPDATE riotgames.damagetakenpermindeltas
+         SET gameid = ${data.gameId}, lane = ${x.timeline.lane}, participantid = ${x.timeline.participantId}, thirty_to_end = ${x.timeline.damageTakenPerMinDeltas("30-end")}, twenty_to_thirty = ${x.timeline.damageTakenPerMinDeltas("20-30")},
+         ten_to_twenty = ${x.timeline.damageTakenPerMinDeltas("10-20")}, zero_to_ten = ${x.timeline.damageTakenPerMinDeltas("0-10")},role = ${x.timeline.role}
+         WHERE gameid = ${data.gameId} AND participantid = ${x.participantId} RETURNING *)
+         INSERT INTO riotgames.damagetakenpermindeltas(gameid, lane, participantid, thirty_to_end, twenty_to_thirty, ten_to_twenty, zero_to_ten, role)
+         SELECT ${data.gameId}, ${x.timeline.lane}, ${x.timeline.participantId}, ${x.timeline.damageTakenPerMinDeltas("30-end")}, ${x.timeline.damageTakenPerMinDeltas("20-30")},
+         ${x.timeline.damageTakenPerMinDeltas("10-20")}, ${x.timeline.damageTakenPerMinDeltas("0-10")}, ${x.timeline.role}
+         WHERE NOT EXISTS(SELECT * FROM upsert);
+         COMMIT;
+         """.execute().apply())
   }
+
 
   // This function updates the Champion table with the current champion stats
   def updateChampionDB(): Unit = {
@@ -309,7 +549,7 @@ object MatchHistorySync {
                        seasonId: Int = 0,
                        queueId: Int = 0,
                        gameId: Long = 0,
-                       participantIdentities: List[ParticipantIdentityDto] = List(new ParticipantIdentityDto),
+                       participantIdentities: List[participantidentitydto] = List(new participantidentitydto),
                        gameVersion: String = "",
                        platformId: String = "",
                        gameMode: String = "",
@@ -321,12 +561,12 @@ object MatchHistorySync {
                        gameCreation: Long = 0
                      )
 
-  case class ParticipantIdentityDto(
-                                     player: PlayerDto = new PlayerDto,
+  case class participantidentitydto(
+                                     player: playerdto = new playerdto,
                                      participantId: Int = 0
                                    )
 
-  case class PlayerDto(
+  case class playerdto(
                         currentPlatformId: String = "",
                         summonerName: String = "",
                         matchHistoryUri: String = "",
